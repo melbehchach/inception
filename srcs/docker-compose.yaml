@@ -89,13 +89,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /Users/mel-behc/data/mariadb
+      device: /Users/marouane/data/mariadb
   wp_volume:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /Users/mel-behc/data/wordpress
+      device: /Users/marouane/data/wordpress
 
 networks:
   internal_network:

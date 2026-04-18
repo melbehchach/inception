@@ -1,13 +1,36 @@
 #!/bin/bash
 
-service mysql start 
+DB_NAME="$MYSQL_DB_NAME"
+DB_USR="$MYSQL_USR"
+DB_USR_PWD="$MYSQL_PWD"
+DB_ROOT_USR="$MYSQL_ROOT_USR"
+DB_ROOT_PWD="$MYSQL_ROOT_PWD"
 
-echo "CREATE DATABASE IF NOT EXISTS ${MYSQL_DB_NAME};" | mysql
-echo "CREATE USER IF NOT EXISTS '$MYSQL_USR'@'%' IDENTIFIED BY '$MYSQL_PWD';" | mysql
-echo "GRANT ALL PRIVILEGES ON $MYSQL_DB_NAME.* TO '$MYSQL_USR'@'%' ;" | mysql
-echo "ALTER USER '$MYSQL_ROOT_USR'@'localhost' IDENTIFIED BY '$MYSQL_ROOT_PWD';" | mysql
-echo "FLUSH PRIVILEGES;" | mysql
+unset MYSQL_PWD
 
-kill $(cat /var/run/mysqld/mysqld.pid)
+# Ensure mariadb owns its data directory (bind mounts may come in as root-owned)
+chown -R mysql:mysql /var/lib/mysql
 
-mysqld_safe
+# Initialize system tables and seed users only when the data directory is empty
+if [ ! -d /var/lib/mysql/mysql ]; then
+    mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql >/dev/null
+
+    service mariadb start
+
+    for i in $(seq 1 30); do
+        mysql --protocol=socket -u root -e "SELECT 1" >/dev/null 2>&1 && break
+        sleep 1
+    done
+
+    mysql --protocol=socket -u root <<EOF
+CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
+CREATE USER IF NOT EXISTS '$DB_USR'@'%' IDENTIFIED BY '$DB_USR_PWD';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USR'@'%';
+ALTER USER '$DB_ROOT_USR'@'localhost' IDENTIFIED BY '$DB_ROOT_PWD';
+FLUSH PRIVILEGES;
+EOF
+
+    mysqladmin --protocol=socket -u root -p"$DB_ROOT_PWD" shutdown
+fi
+
+exec mysqld_safe
